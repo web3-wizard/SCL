@@ -2,13 +2,14 @@ import { sha256 } from "@noble/hashes/sha256";
 import nacl from "tweetnacl";
 import { PublicKey } from "@solana/web3.js";
 import { oracleKeypair } from "../keypair";
+import { getFireblocksClient } from "./fireblocks";
 import { Attestation } from "../types";
 
-export function createAttestation(
+export async function createAttestation(
   walletAddress: string,
   level: number = 1,
   validitySeconds: number = 3600
-): Attestation {
+): Promise<Attestation> {
   const wallet = new PublicKey(walletAddress);
   const expiry = Math.floor(Date.now() / 1000) + validitySeconds;
 
@@ -18,14 +19,26 @@ export function createAttestation(
   messagePreimage.writeBigInt64LE(BigInt(expiry), 32);
   messagePreimage.writeUInt8(level, 40);
 
-  // SHA256 hash then sign with Ed25519
+  // SHA256 hash
   const messageHash = sha256(messagePreimage);
-  const signature = nacl.sign.detached(messageHash, oracleKeypair.secretKey);
+
+  let signature: Buffer;
+
+  const fbClient = getFireblocksClient();
+  if (fbClient) {
+    // Fireblocks Raw Signing
+    signature = await fbClient.rawSign(messageHash);
+  } else {
+    // Local Ed25519 signing
+    signature = Buffer.from(
+      nacl.sign.detached(messageHash, oracleKeypair.secretKey)
+    );
+  }
 
   return {
     wallet: walletAddress,
     expiry,
     level,
-    signature: Buffer.from(signature).toString("base64"),
+    signature: signature.toString("base64"),
   };
 }
