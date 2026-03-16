@@ -1,171 +1,207 @@
-# SCL — Solana Compliance Layer
+<div align="center">
 
-**Regulatory compliance middleware for Solana token transfers.**
+# 🛡️ SCL — Solana Compliance Layer
 
-SCL is an on-chain program (smart contract) built with Anchor that enforces KYC/AML compliance, Travel Rule data exchange, and VASP registry management for Token-2022 transfers on Solana. It is accompanied by an off-chain compliance oracle and a React frontend dashboard.
+### Regulatory Compliance Middleware for Solana Token Transfers
 
----
+[![Solana](https://img.shields.io/badge/Solana-1.18-9945FF?style=for-the-badge&logo=solana&logoColor=white)](https://solana.com)
+[![Anchor](https://img.shields.io/badge/Anchor-0.30.1-blue?style=for-the-badge)](https://anchor-lang.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Rust](https://img.shields.io/badge/Rust-2021-DEA584?style=for-the-badge&logo=rust&logoColor=black)](https://rust-lang.org)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org)
 
-## Table of Contents
+<br />
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [On-Chain Program](#on-chain-program)
-  - [Account Schemas](#account-schemas)
-  - [Instructions](#instructions)
-  - [Events](#events)
-  - [Error Codes](#error-codes)
-- [Compliance Oracle](#compliance-oracle)
-  - [API Endpoints](#api-endpoints)
-  - [Signing Modes](#signing-modes)
-  - [Merkle Tree Service](#merkle-tree-service)
-- [Frontend Application](#frontend-application)
-- [Cryptographic Design](#cryptographic-design)
-  - [Ed25519 Attestation Flow](#ed25519-attestation-flow)
-  - [Merkle Proof Verification](#merkle-proof-verification)
-  - [Travel Rule Encryption](#travel-rule-encryption)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Build & Deploy](#build--deploy)
-  - [Run Tests](#run-tests)
-  - [Run Demo](#run-demo)
-- [Configuration](#configuration)
-- [Testing](#testing)
-- [Security Considerations](#security-considerations)
-- [License](#license)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![Build](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)]()
+[![Tests](https://img.shields.io/badge/tests-13%20passing-brightgreen?style=flat-square)]()
+[![Instructions](https://img.shields.io/badge/instructions-14-blue?style=flat-square)]()
+[![Events](https://img.shields.io/badge/events-6-purple?style=flat-square)]()
+[![Accounts](https://img.shields.io/badge/accounts-4%20PDAs-orange?style=flat-square)]()
+
+<br />
+
+**SCL enforces KYC/AML compliance, Travel Rule data exchange, and VASP registry management at the protocol level for Token-2022 transfers on Solana.**
+
+[Getting Started](#-getting-started) · [Architecture](#-architecture) · [Documentation](#-on-chain-program) · [Testing](#-testing) · [API Reference](#-api-endpoints)
+
+</div>
 
 ---
 
-## Overview
+## 📖 Table of Contents
 
-Financial institutions operating on Solana (VASPs — Virtual Asset Service Providers) face regulatory requirements including:
+<details>
+<summary>Click to expand</summary>
 
-- **KYC/AML verification** — ensuring wallet holders are identity-verified before transfers
-- **Travel Rule compliance** (FATF Recommendation 16) — exchanging originator/beneficiary data for transfers above a jurisdiction-defined threshold
-- **VASP registration** — maintaining an on-chain registry of compliant institutions
-- **Attestation revocation** — ability to revoke a wallet's compliance status in real time
+- [Overview](#-overview)
+- [Architecture](#-architecture)
+- [Features](#-features)
+- [Project Structure](#-project-structure)
+- [On-Chain Program](#-on-chain-program)
+  - [Account Schemas](#-account-schemas)
+  - [Instructions](#-instructions)
+  - [Events](#-events)
+  - [Error Codes](#-error-codes)
+- [Compliance Oracle](#-compliance-oracle)
+  - [API Endpoints](#-api-endpoints)
+  - [Signing Modes](#-signing-modes)
+  - [Merkle Tree Service](#-merkle-tree-service)
+- [Frontend Application](#-frontend-application)
+- [Cryptographic Design](#-cryptographic-design)
+- [Getting Started](#-getting-started)
+- [Configuration](#-configuration)
+- [Testing](#-testing)
+- [Security](#-security-considerations)
 
-SCL enforces all of these at the protocol level. A transfer cannot succeed unless the sender holds a valid, non-revoked compliance attestation signed by a trusted oracle, and Travel Rule data is attached when required.
+</details>
+
+---
+
+## 🌐 Overview
+
+Financial institutions operating on Solana (**VASPs** — Virtual Asset Service Providers) face regulatory requirements including:
+
+> 🔐 **KYC/AML verification** — ensuring wallet holders are identity-verified before transfers
+>
+> 📋 **Travel Rule compliance** (FATF Recommendation 16) — exchanging originator/beneficiary data for transfers above a jurisdiction-defined threshold
+>
+> 🏛️ **VASP registration** — maintaining an on-chain registry of compliant institutions
+>
+> ⛔ **Attestation revocation** — ability to revoke a wallet's compliance status in real time
+
+SCL enforces all of these **at the protocol level**. A transfer cannot succeed unless the sender holds a valid, non-revoked compliance attestation signed by a trusted oracle, and Travel Rule data is attached when required.
 
 ### How It Works
 
-```
-  Sender Wallet                    Compliance Oracle                 Solana Program (SCL)
-  ─────────────                    ─────────────────                 ────────────────────
-       │                                  │                                  │
-       │  1. POST /attest {wallet}        │                                  │
-       │ ────────────────────────────────> │                                  │
-       │                                  │                                  │
-       │  2. {signature, expiry, level}   │                                  │
-       │ <──────────────────────────────── │                                  │
-       │                                  │                                  │
-       │  3. Build transaction:                                              │
-       │     [Ed25519Verify, Memo?, TransferCompliant]                       │
-       │ ──────────────────────────────────────────────────────────────────> │
-       │                                  │                                  │
-       │                                  │     4. Verify Ed25519 precompile │
-       │                                  │        Check expiry              │
-       │                                  │        Check revocation list     │
-       │                                  │        Check travel rule memo    │
-       │                                  │        Execute Token-2022 CPI    │
-       │                                  │        Emit event                │
-       │                                  │                                  │
-       │  5. Transaction confirmed        │                                  │
-       │ <────────────────────────────────────────────────────────────────── │
+```mermaid
+sequenceDiagram
+    participant W as 🏦 Sender Wallet
+    participant O as 🔮 Compliance Oracle
+    participant S as ⛓️ Solana (SCL Program)
+
+    W->>O: 1. POST /attest { wallet }
+    O-->>W: 2. { signature, expiry, level }
+
+    Note over W: 3. Build Transaction
+    Note over W: [Ed25519Verify, Memo?, TransferCompliant]
+
+    W->>S: 4. Submit Transaction
+
+    Note over S: ✅ Verify Ed25519 precompile
+    Note over S: ✅ Check attestation expiry
+    Note over S: ✅ Check revocation list
+    Note over S: ✅ Verify travel rule memo
+    Note over S: ✅ Token-2022 CPI transfer
+    Note over S: 📢 Emit ComplianceEvent
+
+    S-->>W: 5. Transaction Confirmed ✓
 ```
 
 ---
 
-## Architecture
+## 🏗 Architecture
 
-SCL is a monorepo with three components:
+SCL is a **monorepo** with three tightly integrated components:
+
+```mermaid
+graph TB
+    subgraph BLOCKCHAIN["⛓️ Solana Blockchain"]
+        direction LR
+        REG["📋 VaspRegistry<br/><small>PDA</small>"]
+        REV["⛔ RevocationList<br/><small>PDA</small>"]
+        MRK["🌳 MerkleRoot<br/><small>PDA</small>"]
+        PRP["📝 VaspProposal<br/><small>PDA</small>"]
+        TOK["🪙 Token-2022<br/><small>Accounts</small>"]
+
+        SCL_PROG["🛡️ SCL Program"]
+        ED25519["🔑 Ed25519 Precompile"]
+        MEMO["📎 Memo Program"]
+    end
+
+    subgraph FRONTEND["🖥️ React Frontend <small>(port 5173)</small>"]
+        SEND["📤 Send Tab"]
+        RECV["📥 Receive Tab"]
+        ANAL["📊 Analytics Tab"]
+    end
+
+    subgraph ORACLE["🔮 Compliance Oracle <small>(port 3001)</small>"]
+        ATTEST["POST /attest"]
+        MERKLE["POST /merkle/*"]
+        STATS["GET /stats"]
+        FB["🔥 Fireblocks<br/><small>(optional)</small>"]
+    end
+
+    FRONTEND <-->|REST API| ORACLE
+    FRONTEND <-->|Transactions| BLOCKCHAIN
+    ORACLE -.->|Root Updates| BLOCKCHAIN
+
+    style BLOCKCHAIN fill:#1a1a2e,stroke:#6366f1,stroke-width:2px,color:#e1e1e6
+    style FRONTEND fill:#0f2027,stroke:#2ecc71,stroke-width:2px,color:#e1e1e6
+    style ORACLE fill:#1c1017,stroke:#e67e22,stroke-width:2px,color:#e1e1e6
+```
 
 | Component | Technology | Port | Description |
-|-----------|-----------|------|-------------|
-| **On-chain Program** | Rust / Anchor 0.30.1 | — | Solana BPF program enforcing compliance rules |
-| **Compliance Oracle** | Node.js / Express | 3001 | Off-chain attestation signer + Merkle tree + stats |
-| **Frontend App** | React 18 / Vite 5 | 5173 | Wallet dashboard with Send, Receive, Analytics tabs |
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Solana Blockchain                     │
-│                                                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │ VaspRegistry │  │RevocationList│  │ComplianceMerkle│  │
-│  │     PDA      │  │     PDA      │  │   Root PDA     │  │
-│  └──────────────┘  └──────────────┘  └───────────────┘  │
-│                                                          │
-│  ┌──────────────┐  ┌──────────────┐                     │
-│  │ VaspProposal │  │  Token-2022  │                     │
-│  │     PDA      │  │   Accounts   │                     │
-│  └──────────────┘  └──────────────┘                     │
-│                                                          │
-│        SCL Program  •  Ed25519 Precompile  •  Memo       │
-└─────────────────────────────────────────────────────────┘
-         ▲                                      ▲
-         │                                      │
-    Transactions                           Transactions
-         │                                      │
-┌────────┴────────┐                  ┌──────────┴─────────┐
-│  React Frontend │  ◄── REST ──►   │  Compliance Oracle  │
-│  (Phantom)      │                  │  (Express)          │
-└─────────────────┘                  └────────────────────┘
-```
+|:---------:|:----------:|:----:|:------------|
+| ⛓️ **On-Chain Program** | Rust / Anchor 0.30.1 | — | BPF program enforcing compliance rules |
+| 🔮 **Compliance Oracle** | Node.js / Express 4 | `3001` | Off-chain attestation signer + Merkle tree |
+| 🖥️ **Frontend App** | React 18 / Vite 5 | `5173` | Wallet dashboard with Send, Receive, Analytics |
 
 ---
 
-## Features
+## ✨ Features
 
-### MUST HAVE (Core Compliance)
+### 🟢 MUST HAVE — Core Compliance
 
-| Feature | Description |
-|---------|-------------|
-| Ed25519 attestation verification | On-chain verification via Solana's Ed25519 precompile introspection |
-| Token-2022 CPI transfers | All transfers use `transfer_checked` via `anchor_spl::token_2022` |
-| Travel Rule enforcement | Memo program introspection enforces encrypted payload for transfers ≥ threshold |
-| VASP registry | On-chain registry with name, jurisdiction, and X25519 encryption keys |
-| Configurable threshold | Owner-defined travel rule threshold (default: 1000 rUSDC) |
-| Attestation expiry | On-chain timestamp validation prevents use of stale attestations |
-| Oracle-signed attestations | SHA-256 + Ed25519 signature scheme with 41-byte structured preimage |
-| X25519 encryption | Travel Rule payloads encrypted with XSalsa20-Poly1305 via TweetNaCl |
+<table>
+<tr><td width="40">✅</td><td><b>Ed25519 attestation verification</b></td><td>On-chain verification via Solana's Ed25519 precompile introspection</td></tr>
+<tr><td>✅</td><td><b>Token-2022 CPI transfers</b></td><td>All transfers use <code>transfer_checked</code> via <code>anchor_spl::token_2022</code></td></tr>
+<tr><td>✅</td><td><b>Travel Rule enforcement</b></td><td>Memo program introspection enforces encrypted payload for transfers ≥ threshold</td></tr>
+<tr><td>✅</td><td><b>VASP registry</b></td><td>On-chain registry with name, jurisdiction, X25519 encryption keys</td></tr>
+<tr><td>✅</td><td><b>Configurable threshold</b></td><td>Owner-defined travel rule threshold (default: 1000 rUSDC)</td></tr>
+<tr><td>✅</td><td><b>Attestation expiry</b></td><td>On-chain timestamp validation prevents stale attestations</td></tr>
+<tr><td>✅</td><td><b>Oracle-signed attestations</b></td><td>SHA-256 + Ed25519 signature with 41-byte structured preimage</td></tr>
+<tr><td>✅</td><td><b>X25519 encryption</b></td><td>Travel Rule payloads encrypted with XSalsa20-Poly1305 via TweetNaCl</td></tr>
+</table>
 
-### SHOULD HAVE (Enhanced Security)
+### 🟡 SHOULD HAVE — Enhanced Security
 
-| Feature | Description |
-|---------|-------------|
-| Attestation revocation | `RevocationList` PDA with revoke/unrevoke instructions, checked on every transfer |
-| Multiple compliance oracles | `oracle_pubkeys` Vec (max 5) with add/remove management, any-of verification |
-| Governance VASP registration | `VaspProposal` PDA — propose/approve/reject workflow with rent refund on rejection |
+<table>
+<tr><td width="40">✅</td><td><b>Attestation revocation</b></td><td><code>RevocationList</code> PDA with revoke/unrevoke, checked on every transfer</td></tr>
+<tr><td>✅</td><td><b>Multiple compliance oracles</b></td><td><code>oracle_pubkeys</code> Vec (max 5) with add/remove, any-of verification</td></tr>
+<tr><td>✅</td><td><b>Governance VASP registration</b></td><td><code>VaspProposal</code> PDA — propose/approve/reject with rent refund</td></tr>
+</table>
 
-### COULD HAVE (Advanced)
+### 🔵 COULD HAVE — Advanced
 
-| Feature | Description |
-|---------|-------------|
-| ZK simulation (Merkle tree) | Keccak256 sorted-pair Merkle proof verification for privacy-preserving compliance |
-| Fireblocks API integration | Raw Signing API client with JWT RS256 authentication for institutional-grade key custody |
-| Analytics dashboard | 6 Anchor events, oracle stats tracking, React dashboard with real-time metrics |
+<table>
+<tr><td width="40">✅</td><td><b>ZK simulation (Merkle tree)</b></td><td>Keccak256 sorted-pair Merkle proof for privacy-preserving compliance</td></tr>
+<tr><td>✅</td><td><b>Fireblocks API integration</b></td><td>Raw Signing API with JWT RS256 for institutional key custody</td></tr>
+<tr><td>✅</td><td><b>Analytics dashboard</b></td><td>6 Anchor events, oracle stats, React dashboard with real-time metrics</td></tr>
+</table>
 
 ---
 
-## Project Structure
+## 📁 Project Structure
+
+<details>
+<summary><b>Click to expand full directory tree</b></summary>
 
 ```
 SCL/
-├── programs/scl/                  # On-chain Anchor program
+├── 🦀 programs/scl/                  # On-chain Anchor program
 │   └── src/
-│       ├── lib.rs                 #   Program entrypoint — 14 instruction handlers
-│       ├── errors.rs              #   19 error codes (6000–6018)
-│       ├── events.rs              #   6 Anchor event structs
-│       ├── utils.rs               #   Constants (Memo Program ID)
-│       ├── state/                 #   Account schemas
-│       │   ├── registry.rs        #     VaspRegistry + VaspEntry
-│       │   ├── revocation_list.rs #     RevocationList
-│       │   ├── proposal.rs        #     VaspProposal + ProposalStatus
-│       │   └── merkle_root.rs     #     ComplianceMerkleRoot
-│       └── instructions/          #   Instruction handlers
+│       ├── lib.rs                     #   Program entrypoint — 14 instruction handlers
+│       ├── errors.rs                  #   19 error codes (6000–6018)
+│       ├── events.rs                  #   6 Anchor event structs
+│       ├── utils.rs                   #   Constants (Memo Program ID)
+│       ├── state/                     #   Account schemas
+│       │   ├── registry.rs            #     VaspRegistry + VaspEntry
+│       │   ├── revocation_list.rs     #     RevocationList
+│       │   ├── proposal.rs            #     VaspProposal + ProposalStatus
+│       │   └── merkle_root.rs         #     ComplianceMerkleRoot
+│       └── instructions/              #   Instruction handlers (14 files)
 │           ├── initialize_registry.rs
 │           ├── register_vasp.rs
 │           ├── transfer_compliant.rs
@@ -181,280 +217,400 @@ SCL/
 │           ├── initialize_merkle_root.rs
 │           └── update_merkle_root.rs
 │
-├── oracle/                        # Off-chain compliance oracle
+├── 🔮 oracle/                         # Off-chain compliance oracle
 │   └── src/
-│       ├── index.ts               #   Express server (port 3001)
-│       ├── keypair.ts             #   Demo Ed25519 oracle keypair
-│       ├── types.ts               #   TypeScript interfaces
+│       ├── index.ts                   #   Express server (port 3001)
+│       ├── keypair.ts                 #   Demo Ed25519 oracle keypair
+│       ├── types.ts                   #   TypeScript interfaces
 │       ├── routes/
-│       │   ├── attest.ts          #     POST /attest
-│       │   ├── merkle.ts          #     Merkle tree CRUD routes
-│       │   └── stats.ts           #     GET /stats
+│       │   ├── attest.ts              #     POST /attest
+│       │   ├── merkle.ts              #     Merkle tree CRUD routes
+│       │   └── stats.ts              #     GET /stats
 │       └── services/
-│           ├── signer.ts          #     Attestation signing (async, Fireblocks-aware)
-│           ├── merkle.ts          #     Keccak256 Merkle tree implementation
-│           ├── stats.ts           #     In-memory statistics tracker
-│           ├── fireblocks.ts      #     Fireblocks Raw Signing API client
-│           └── fireblocks-mock.ts #     Mock client for local testing
+│           ├── signer.ts              #     Attestation signing (async, Fireblocks-aware)
+│           ├── merkle.ts              #     Keccak256 Merkle tree
+│           ├── stats.ts               #     In-memory statistics tracker
+│           ├── fireblocks.ts          #     Fireblocks Raw Signing API client
+│           └── fireblocks-mock.ts     #     Mock client for testing
 │
-├── app/                           # React frontend
+├── ⚛️  app/                            # React frontend
 │   └── src/
-│       ├── App.tsx                #   Root component (Send | Receive | Analytics tabs)
-│       ├── main.tsx               #   Vite entrypoint
+│       ├── App.tsx                    #   Root — Send | Receive | Analytics tabs
 │       ├── components/
-│       │   ├── TransferForm.tsx    #     Compliant transfer form
-│       │   ├── ReceiverDashboard.tsx #   Travel Rule decryption
-│       │   ├── AnalyticsDashboard.tsx #  Real-time metrics dashboard
-│       │   ├── WalletConnect.tsx   #     Phantom wallet button
-│       │   ├── AttestationBadge.tsx #    Visual KYC status indicator
-│       │   └── StatusDisplay.tsx   #     Transaction status display
+│       │   ├── TransferForm.tsx       #     Compliant transfer form
+│       │   ├── ReceiverDashboard.tsx   #     Travel Rule decryption
+│       │   ├── AnalyticsDashboard.tsx  #     Real-time metrics dashboard
+│       │   ├── WalletConnect.tsx       #     Phantom wallet button
+│       │   ├── AttestationBadge.tsx    #     Visual KYC status indicator
+│       │   └── StatusDisplay.tsx       #     Transaction status display
 │       ├── hooks/
-│       │   ├── useAttestation.ts   #     Oracle attestation fetcher
-│       │   ├── useCompliantTransfer.ts # Transfer transaction builder
-│       │   ├── useTravelRule.ts    #     X25519 encrypt/decrypt
-│       │   └── useAnalytics.ts     #     Aggregated analytics data
+│       │   ├── useAttestation.ts       #     Oracle attestation fetcher
+│       │   ├── useCompliantTransfer.ts #     Transfer transaction builder
+│       │   ├── useTravelRule.ts        #     X25519 encrypt/decrypt
+│       │   └── useAnalytics.ts         #     Aggregated analytics data
 │       ├── utils/
-│       │   ├── transaction.ts      #     Ed25519 IX, Memo IX, PDA derivation, TX builders
-│       │   ├── merkle.ts           #     Oracle Merkle proof fetcher
-│       │   ├── attestation.ts      #     Attestation data parsing
-│       │   ├── encryption.ts       #     X25519 + XSalsa20-Poly1305 encryption
-│       │   └── constants.ts        #     Program IDs, oracle URL, threshold
+│       │   ├── transaction.ts          #     Ed25519 IX, Memo IX, PDA derivation
+│       │   ├── merkle.ts               #     Oracle Merkle proof fetcher
+│       │   ├── attestation.ts          #     Attestation data parsing
+│       │   ├── encryption.ts           #     X25519 + XSalsa20-Poly1305
+│       │   └── constants.ts            #     Program IDs, URLs, thresholds
 │       └── idl/
-│           └── scl.json            #     Anchor IDL (14 IX, 4 accounts, 6 events, 19 errors)
+│           └── scl.json               #     Anchor IDL
 │
-├── tests/
-│   ├── scl.spec.ts                # 13 test scenarios
+├── 🧪 tests/
+│   ├── scl.spec.ts                    # 13 test scenarios
 │   └── helpers/
-│       ├── setup.ts               #   Test fixtures (mint, ATAs, PDAs)
-│       ├── attestation.ts         #   Test attestation builder
-│       └── merkle.ts              #   Test Merkle tree helper
+│       ├── setup.ts                   #   Test fixtures
+│       ├── attestation.ts             #   Attestation builder
+│       └── merkle.ts                  #   Merkle tree helper
 │
-├── scripts/
-│   ├── demo.ts                    # 10-scenario end-to-end demo
-│   ├── generate-vasp-keys.ts      # X25519 keypair generator
-│   └── setup-demo-tokens.ts       # rUSDC Token-2022 mint setup
+├── 📜 scripts/
+│   ├── demo.ts                        # 10-scenario E2E demo
+│   ├── generate-vasp-keys.ts          # X25519 keypair generator
+│   └── setup-demo-tokens.ts           # rUSDC Token-2022 setup
 │
-├── Anchor.toml                    # Anchor configuration
-├── Cargo.toml                     # Rust workspace
-├── package.json                   # npm workspace root
-└── tsconfig.json                  # TypeScript config (tests)
+├── Anchor.toml
+├── Cargo.toml
+├── package.json                       # npm workspace root
+└── tsconfig.json
 ```
+
+</details>
 
 ---
 
-## On-Chain Program
+## ⛓️ On-Chain Program
 
-**Framework:** Anchor 0.30.1 | **Solana SDK:** ~1.18 | **Program ID:** `SC1111111111111111111111111111111111111111111`
+> **Framework:** Anchor 0.30.1 &nbsp;|&nbsp; **Solana SDK:** ~1.18 &nbsp;|&nbsp; **Program ID:** `SC1111111111111111111111111111111111111111111`
 
-### Account Schemas
+### 📦 Account Schemas
 
-#### VaspRegistry (PDA)
+#### 📋 VaspRegistry
 
-**Seed:** `"vasp_registry"` | **Size:** 3,260 bytes
+> **Seed:** `"vasp_registry"` &nbsp;|&nbsp; **Size:** 3,260 bytes
+
+```mermaid
+classDiagram
+    class VaspRegistry {
+        +Pubkey owner
+        +Vec~Pubkey~ oracle_pubkeys [max 5]
+        +u64 travel_rule_threshold
+        +u32 vasp_count
+        +Vec~VaspEntry~ vasps [max 20]
+    }
+    class VaspEntry {
+        +Pubkey vasp_pubkey
+        +String name [max 64]
+        +String jurisdiction [max 16]
+        +[u8; 32] encryption_key
+    }
+    VaspRegistry "1" *-- "0..20" VaspEntry
+```
+
+<details>
+<summary><b>Field details</b></summary>
+
+| Field | Type | Size | Description |
+|:------|:-----|:-----|:------------|
+| `owner` | `Pubkey` | 32 B | Registry admin |
+| `oracle_pubkeys` | `Vec<Pubkey>` | 4 + 5×32 B | Trusted oracle keys |
+| `travel_rule_threshold` | `u64` | 8 B | Minimum amount requiring Travel Rule |
+| `vasp_count` | `u32` | 4 B | Number of registered VASPs |
+| `vasps` | `Vec<VaspEntry>` | 4 + 20×152 B | Registered VASP list |
+
+</details>
+
+#### ⛔ RevocationList
+
+> **Seed:** `"revocation_list"` &nbsp;|&nbsp; **Size:** 3,248 bytes
 
 | Field | Type | Description |
-|-------|------|-------------|
-| `owner` | `Pubkey` | Registry admin (can register VASPs, manage oracles) |
-| `oracle_pubkeys` | `Vec<Pubkey>` | Trusted oracle public keys (max 5) |
-| `travel_rule_threshold` | `u64` | Minimum amount requiring Travel Rule data |
-| `vasp_count` | `u32` | Number of registered VASPs |
-| `vasps` | `Vec<VaspEntry>` | Registered VASP list (max 20) |
-
-**VaspEntry** (nested struct, 152 bytes):
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `vasp_pubkey` | `Pubkey` | VASP's Solana public key |
-| `name` | `String` | Institution name (max 64 chars) |
-| `jurisdiction` | `String` | ISO country code (max 16 chars) |
-| `encryption_key` | `[u8; 32]` | X25519 public key for Travel Rule encryption |
-
-#### RevocationList (PDA)
-
-**Seed:** `"revocation_list"` | **Size:** 3,248 bytes
-
-| Field | Type | Description |
-|-------|------|-------------|
+|:------|:-----|:------------|
 | `authority` | `Pubkey` | Registry owner |
 | `revocation_count` | `u32` | Number of revoked wallets |
-| `revoked_wallets` | `Vec<Pubkey>` | Revoked wallet addresses (max 100) |
+| `revoked_wallets` | `Vec<Pubkey>` | Revoked addresses (max 100) |
 
-#### VaspProposal (PDA)
+#### 📝 VaspProposal
 
-**Seed:** `["vasp_proposal", vasp_pubkey]` | **Size:** 202 bytes
+> **Seed:** `["vasp_proposal", vasp_pubkey]` &nbsp;|&nbsp; **Size:** 202 bytes
 
 | Field | Type | Description |
-|-------|------|-------------|
-| `proposer` | `Pubkey` | Account that submitted the proposal |
+|:------|:-----|:------------|
+| `proposer` | `Pubkey` | Account that submitted proposal |
 | `vasp_pubkey` | `Pubkey` | Proposed VASP's public key |
 | `name` | `String` | Institution name |
 | `jurisdiction` | `String` | ISO country code |
 | `encryption_key` | `[u8; 32]` | X25519 public key |
-| `proposed_at` | `i64` | Unix timestamp of proposal |
+| `proposed_at` | `i64` | Unix timestamp |
 | `status` | `ProposalStatus` | `Pending` / `Approved` / `Rejected` |
 | `bump` | `u8` | PDA bump seed |
 
-#### ComplianceMerkleRoot (PDA)
+#### 🌳 ComplianceMerkleRoot
 
-**Seed:** `"compliance_merkle_root"` | **Size:** 84 bytes
+> **Seed:** `"compliance_merkle_root"` &nbsp;|&nbsp; **Size:** 84 bytes
 
 | Field | Type | Description |
-|-------|------|-------------|
+|:------|:-----|:------------|
 | `authority` | `Pubkey` | Registry owner |
 | `root` | `[u8; 32]` | Current Merkle root hash |
-| `tree_size` | `u32` | Number of wallets in the tree |
-| `last_updated` | `i64` | Unix timestamp of last root update |
+| `tree_size` | `u32` | Number of wallets in tree |
+| `last_updated` | `i64` | Unix timestamp of last update |
 
-### Instructions
+---
 
-#### Registry & VASP Management
+### 📌 Instructions
 
-| Instruction | Signer | Description |
-|------------|--------|-------------|
-| `initialize_registry` | Owner | Creates the `VaspRegistry` PDA with an initial oracle and threshold |
-| `register_vasp` | Owner | Directly registers a VASP (emits `VaspRegisteredEvent`) |
-| `add_oracle` | Owner | Adds an oracle pubkey to the registry (max 5) |
-| `remove_oracle` | Owner | Removes an oracle (cannot remove the last one) |
-
-#### Compliance Transfers
+#### 🏛️ Registry & VASP Management
 
 | Instruction | Signer | Description |
-|------------|--------|-------------|
-| `transfer_compliant` | Sender | Executes a Token-2022 transfer with Ed25519 attestation, revocation check, and optional Travel Rule memo (emits `CompliantTransferEvent`) |
-| `transfer_compliant_merkle` | Sender | Executes a Token-2022 transfer verified by Merkle proof instead of Ed25519 attestation (emits `MerkleTransferEvent`) |
+|:------------|:------:|:------------|
+| `initialize_registry` | 👑 Owner | Creates `VaspRegistry` PDA with initial oracle and threshold |
+| `register_vasp` | 👑 Owner | Directly registers a VASP → emits `VaspRegisteredEvent` |
+| `add_oracle` | 👑 Owner | Adds oracle pubkey (max 5, duplicate guard) |
+| `remove_oracle` | 👑 Owner | Removes oracle (cannot remove last one) |
 
-#### Revocation
-
-| Instruction | Signer | Description |
-|------------|--------|-------------|
-| `initialize_revocation_list` | Owner | Creates the `RevocationList` PDA |
-| `revoke_attestation` | Owner | Adds a wallet to the revocation list (emits `AttestationRevokedEvent`) |
-| `unrevoke_attestation` | Owner | Removes a wallet from the revocation list (emits `AttestationUnrevokedEvent`) |
-
-#### Governance Proposals
+#### 💸 Compliance Transfers
 
 | Instruction | Signer | Description |
-|------------|--------|-------------|
-| `propose_vasp` | Any user | Creates a `VaspProposal` PDA (emits `VaspProposedEvent`) |
-| `approve_vasp` | Owner | Approves proposal → registers VASP, closes proposal PDA |
-| `reject_vasp` | Owner | Rejects proposal → closes PDA, refunds rent to proposer |
+|:------------|:------:|:------------|
+| `transfer_compliant` | 👤 Sender | Token-2022 transfer with Ed25519 attestation + revocation check + memo → emits `CompliantTransferEvent` |
+| `transfer_compliant_merkle` | 👤 Sender | Token-2022 transfer verified by Merkle proof → emits `MerkleTransferEvent` |
 
-#### Merkle Tree
+#### ⛔ Revocation
 
 | Instruction | Signer | Description |
-|------------|--------|-------------|
-| `initialize_merkle_root` | Owner | Creates the `ComplianceMerkleRoot` PDA |
-| `update_merkle_root` | Owner | Sets a new root hash and tree size |
+|:------------|:------:|:------------|
+| `initialize_revocation_list` | 👑 Owner | Creates `RevocationList` PDA |
+| `revoke_attestation` | 👑 Owner | Adds wallet to revocation list → emits `AttestationRevokedEvent` |
+| `unrevoke_attestation` | 👑 Owner | Removes wallet from list → emits `AttestationUnrevokedEvent` |
 
-### Events
+#### 📝 Governance Proposals
 
-| Event | Emitted By | Fields |
-|-------|-----------|--------|
-| `CompliantTransferEvent` | `transfer_compliant` | sender, recipient, amount, attestation_level, travel_rule_included, timestamp |
-| `MerkleTransferEvent` | `transfer_compliant_merkle` | sender, recipient, amount, proof_size, timestamp |
-| `AttestationRevokedEvent` | `revoke_attestation` | wallet, authority, timestamp |
-| `AttestationUnrevokedEvent` | `unrevoke_attestation` | wallet, authority, timestamp |
-| `VaspRegisteredEvent` | `register_vasp` + `approve_vasp` | vasp_pubkey, name, jurisdiction, timestamp |
-| `VaspProposedEvent` | `propose_vasp` | vasp_pubkey, proposer, name, timestamp |
+| Instruction | Signer | Description |
+|:------------|:------:|:------------|
+| `propose_vasp` | 👤 Any | Creates `VaspProposal` PDA → emits `VaspProposedEvent` |
+| `approve_vasp` | 👑 Owner | Approves → registers VASP, closes proposal PDA |
+| `reject_vasp` | 👑 Owner | Rejects → closes PDA, refunds rent to proposer |
 
-### Error Codes
+#### 🌳 Merkle Tree
+
+| Instruction | Signer | Description |
+|:------------|:------:|:------------|
+| `initialize_merkle_root` | 👑 Owner | Creates `ComplianceMerkleRoot` PDA |
+| `update_merkle_root` | 👑 Owner | Sets new root hash and tree size |
+
+---
+
+### 📢 Events
+
+```mermaid
+graph LR
+    TC["transfer_compliant"] -->|emits| CTE["📢 CompliantTransferEvent"]
+    TCM["transfer_compliant_merkle"] -->|emits| MTE["📢 MerkleTransferEvent"]
+    RA["revoke_attestation"] -->|emits| ARE["📢 AttestationRevokedEvent"]
+    UA["unrevoke_attestation"] -->|emits| AURE["📢 AttestationUnrevokedEvent"]
+    RV["register_vasp / approve_vasp"] -->|emits| VRE["📢 VaspRegisteredEvent"]
+    PV["propose_vasp"] -->|emits| VPE["📢 VaspProposedEvent"]
+
+    style CTE fill:#6366f1,color:#fff
+    style MTE fill:#6366f1,color:#fff
+    style ARE fill:#ef4444,color:#fff
+    style AURE fill:#22c55e,color:#fff
+    style VRE fill:#f59e0b,color:#fff
+    style VPE fill:#f59e0b,color:#fff
+```
+
+<details>
+<summary><b>Event field details</b></summary>
+
+| Event | Fields |
+|:------|:-------|
+| `CompliantTransferEvent` | sender, recipient, amount, attestation_level, travel_rule_included, timestamp |
+| `MerkleTransferEvent` | sender, recipient, amount, proof_size, timestamp |
+| `AttestationRevokedEvent` | wallet, authority, timestamp |
+| `AttestationUnrevokedEvent` | wallet, authority, timestamp |
+| `VaspRegisteredEvent` | vasp_pubkey, name, jurisdiction, timestamp |
+| `VaspProposedEvent` | vasp_pubkey, proposer, name, timestamp |
+
+</details>
+
+---
+
+### ❌ Error Codes
+
+<details>
+<summary><b>Click to expand all 19 error codes</b></summary>
 
 | Code | Name | Description |
-|------|------|-------------|
-| 6000 | `AttestationWalletMismatch` | Attestation wallet doesn't match the sender |
-| 6001 | `AttestationExpired` | Attestation timestamp has passed |
-| 6002 | `MissingTravelRulePayload` | Transfer ≥ threshold without memo |
-| 6003 | `VaspAlreadyExists` | Duplicate VASP registration |
-| 6004 | `Unauthorized` | Non-owner attempted owner-only action |
-| 6005 | `MissingEd25519Instruction` | No Ed25519 precompile in transaction |
-| 6006 | `InvalidSignatureVerification` | Ed25519 signature doesn't match |
-| 6007 | `InvalidAttestationMessage` | Malformed attestation preimage |
-| 6008 | `AttestationRevoked` | Wallet is on the revocation list |
-| 6009 | `WalletNotRevoked` | Wallet not found in revocation list |
-| 6010 | `RevocationListFull` | Max 100 revocations reached |
-| 6011 | `WalletAlreadyRevoked` | Wallet already revoked |
-| 6012 | `OracleAlreadyExists` | Duplicate oracle pubkey |
-| 6013 | `OracleNotFound` | Oracle not in registry |
-| 6014 | `OracleListFull` | Max 5 oracles reached |
-| 6015 | `CannotRemoveLastOracle` | Must keep at least one oracle |
-| 6016 | `InvalidProposalStatus` | Proposal not in `Pending` state |
-| 6017 | `RegistryFull` | Max 20 VASPs reached |
-| 6018 | `InvalidMerkleProof` | Merkle proof doesn't compute to stored root |
+|:----:|:-----|:------------|
+| `6000` | `AttestationWalletMismatch` | Attestation wallet doesn't match sender |
+| `6001` | `AttestationExpired` | Attestation timestamp has passed |
+| `6002` | `MissingTravelRulePayload` | Transfer ≥ threshold without memo |
+| `6003` | `VaspAlreadyExists` | Duplicate VASP registration |
+| `6004` | `Unauthorized` | Non-owner attempted owner-only action |
+| `6005` | `MissingEd25519Instruction` | No Ed25519 precompile in transaction |
+| `6006` | `InvalidSignatureVerification` | Ed25519 signature mismatch |
+| `6007` | `InvalidAttestationMessage` | Malformed attestation preimage |
+| `6008` | `AttestationRevoked` | Wallet on revocation list |
+| `6009` | `WalletNotRevoked` | Wallet not found in revocation list |
+| `6010` | `RevocationListFull` | Max 100 revocations |
+| `6011` | `WalletAlreadyRevoked` | Wallet already revoked |
+| `6012` | `OracleAlreadyExists` | Duplicate oracle pubkey |
+| `6013` | `OracleNotFound` | Oracle not in registry |
+| `6014` | `OracleListFull` | Max 5 oracles |
+| `6015` | `CannotRemoveLastOracle` | Must keep ≥ 1 oracle |
+| `6016` | `InvalidProposalStatus` | Proposal not `Pending` |
+| `6017` | `RegistryFull` | Max 20 VASPs |
+| `6018` | `InvalidMerkleProof` | Proof doesn't compute to stored root |
+
+</details>
 
 ---
 
-## Compliance Oracle
+## 🔮 Compliance Oracle
 
-**Runtime:** Node.js | **Framework:** Express 4 | **Port:** 3001
+> **Runtime:** Node.js &nbsp;|&nbsp; **Framework:** Express 4 &nbsp;|&nbsp; **Port:** 3001
 
-The oracle is a stateless compliance service that signs attestations and maintains an off-chain Merkle tree. It supports two signing backends:
+### 📡 API Endpoints
 
-- **Local** (default) — Ed25519 via TweetNaCl using a deterministic demo keypair
-- **Fireblocks** — Raw Signing API with MPC EdDSA for institutional key custody
+#### `POST /attest` — Issue Attestation
 
-### API Endpoints
+```json
+// Request
+{ "wallet": "<base58 pubkey>", "level": 1 }
 
-#### Attestation
-
-```
-POST /attest
-Body: { "wallet": "<base58 pubkey>", "level": 1 }
-Response: { "wallet": "...", "expiry": 1234567890, "level": 1, "signature": "<base64>" }
-```
-
-Issues a time-limited (1 hour) compliance attestation. The signature covers a 41-byte preimage: `wallet(32) || expiry(8 LE) || level(1)`, SHA-256 hashed then Ed25519 signed.
-
-#### Merkle Tree
-
-```
-POST   /merkle/add              — Add a wallet to the compliance tree
-POST   /merkle/remove           — Remove a wallet from the tree
-GET    /merkle/root             — Get current root hash and tree size
-GET    /merkle/proof/:wallet    — Get inclusion proof for a wallet
+// Response
+{
+  "wallet": "AbC123...",
+  "expiry": 1234567890,
+  "level": 1,
+  "signature": "<base64 Ed25519 signature>"
+}
 ```
 
-#### Stats & Health
+#### `POST /merkle/add` — Add Wallet to Compliance Tree
 
-```
-GET /stats       — Attestation counts, Merkle stats, uptime
-GET /health      — Oracle status, public key, signing mode
-```
+```json
+// Request
+{ "wallet": "<base58 pubkey>" }
 
-### Signing Modes
-
-| Mode | Trigger | Use Case |
-|------|---------|----------|
-| **Local** | Default (no env vars) | Development, testing, demos |
-| **Fireblocks** | Set `FIREBLOCKS_API_KEY`, `FIREBLOCKS_API_SECRET_PATH`, `FIREBLOCKS_VAULT_ID` | Production with MPC key custody |
-
-### Merkle Tree Service
-
-The oracle maintains an in-memory keccak256 Merkle tree with sorted-pair hashing:
-
-```
-hash(a, b) = keccak256(min(a,b) || max(a,b))
+// Response
+{ "wallet": "...", "root": [0,1,2,...], "tree_size": 42 }
 ```
 
-This convention matches the on-chain `transfer_compliant_merkle` instruction, enabling privacy-preserving compliance verification — wallets can prove membership in a compliant set without revealing the full list.
+#### `POST /merkle/remove` — Remove Wallet
+
+#### `GET /merkle/root` — Current Root & Size
+
+#### `GET /merkle/proof/:wallet` — Inclusion Proof
+
+```json
+{
+  "wallet": "AbC123...",
+  "proof": [[0,1,...,31], [32,33,...,63]],
+  "root": [0,1,2,...,31]
+}
+```
+
+#### `GET /stats` — Oracle Statistics
+
+```json
+{
+  "uptime_seconds": 3600,
+  "attestations_issued": 150,
+  "attestations_by_level": { "1": 120, "2": 30 },
+  "merkle_proofs_served": 45,
+  "merkle_wallets_added": 50,
+  "merkle_wallets_removed": 5
+}
+```
+
+#### `GET /health` — Health Check
+
+```json
+{ "status": "ok", "oracle_pubkey": "...", "signing_mode": "local" }
+```
 
 ---
 
-## Frontend Application
+### 🔑 Signing Modes
 
-**Framework:** React 18 | **Bundler:** Vite 5 | **Wallet:** Phantom (Solana Wallet Adapter)
+```mermaid
+graph LR
+    subgraph LOCAL["🏠 Local Mode (Default)"]
+        LK["Demo Ed25519 Keypair"] --> LS["TweetNaCl sign.detached"]
+    end
+
+    subgraph FIREBLOCKS["🔥 Fireblocks Mode"]
+        JWT["JWT RS256 Auth"] --> API["Raw Signing API"]
+        API --> MPC["MPC EdDSA Ed25519"]
+    end
+
+    ENV{"FIREBLOCKS_API_KEY<br/>set?"}
+    ENV -->|No| LOCAL
+    ENV -->|Yes| FIREBLOCKS
+
+    style LOCAL fill:#0f2027,stroke:#2ecc71,stroke-width:2px,color:#e1e1e6
+    style FIREBLOCKS fill:#1c1017,stroke:#e67e22,stroke-width:2px,color:#e1e1e6
+```
+
+| Variable | Description |
+|:---------|:------------|
+| `FIREBLOCKS_API_KEY` | Fireblocks API key |
+| `FIREBLOCKS_API_SECRET_PATH` | Path to RSA private key file |
+| `FIREBLOCKS_VAULT_ID` | Vault account ID |
+
+---
+
+### 🌳 Merkle Tree Service
+
+The oracle maintains an in-memory **keccak256 Merkle tree** with sorted-pair hashing to match the on-chain convention:
+
+```
+leaf         = keccak256(wallet_pubkey_bytes)
+internal     = keccak256(min(left, right) || max(left, right))
+```
+
+This enables **privacy-preserving compliance** — wallets prove membership in a compliant set without revealing the full list.
+
+---
+
+## 🖥️ Frontend Application
+
+> **Framework:** React 18 &nbsp;|&nbsp; **Bundler:** Vite 5 &nbsp;|&nbsp; **Wallet:** Phantom via Solana Wallet Adapter
 
 ### Tabs
 
-| Tab | Component | Purpose |
-|-----|-----------|---------|
-| **Send** | `TransferForm` | Build and send compliant Token-2022 transfers with auto-attestation |
-| **Receive** | `ReceiverDashboard` | Decrypt Travel Rule payloads from incoming transfers |
-| **Analytics** | `AnalyticsDashboard` | Real-time compliance metrics from oracle + on-chain state |
+```mermaid
+graph LR
+    APP["🖥️ App"]
+    APP --> SEND["📤 Send<br/><small>TransferForm</small>"]
+    APP --> RECV["📥 Receive<br/><small>ReceiverDashboard</small>"]
+    APP --> ANAL["📊 Analytics<br/><small>AnalyticsDashboard</small>"]
 
-### Key Hooks
+    SEND --> UA["useAttestation"]
+    SEND --> UCT["useCompliantTransfer"]
+    SEND --> UTR["useTravelRule"]
+
+    RECV --> UTR2["useTravelRule"]
+    ANAL --> UAN["useAnalytics"]
+
+    style APP fill:#6366f1,color:#fff
+    style SEND fill:#1a1a2e,stroke:#6366f1,color:#e1e1e6
+    style RECV fill:#1a1a2e,stroke:#6366f1,color:#e1e1e6
+    style ANAL fill:#1a1a2e,stroke:#6366f1,color:#e1e1e6
+```
+
+| Tab | Component | Description |
+|:---:|:---------:|:------------|
+| 📤 **Send** | `TransferForm` | Build and send compliant Token-2022 transfers with auto-attestation |
+| 📥 **Receive** | `ReceiverDashboard` | Decrypt Travel Rule payloads from incoming transfers |
+| 📊 **Analytics** | `AnalyticsDashboard` | Real-time compliance metrics from oracle + on-chain state |
+
+### Hooks
 
 | Hook | Purpose |
-|------|---------|
+|:-----|:--------|
 | `useAttestation` | Fetches attestation from oracle, manages validity state |
 | `useCompliantTransfer` | Builds the 3-instruction transaction (Ed25519 + Memo + Transfer) |
 | `useTravelRule` | X25519 encryption/decryption of Travel Rule payloads |
@@ -462,100 +618,108 @@ This convention matches the on-chain `transfer_compliant_merkle` instruction, en
 
 ### Analytics Dashboard
 
-The dashboard displays four metric cards and detailed breakdowns:
+The dashboard displays:
 
-- **Attestations Issued** — Total attestations signed by the oracle
-- **Registered VASPs** — Count from on-chain VaspRegistry
-- **Revoked Wallets** — Count from on-chain RevocationList
-- **Merkle Tree Wallets** — Current compliance set size
+| Metric Card | Source |
+|:------------|:-------|
+| 📊 Attestations Issued | Oracle `/stats` |
+| 🏛️ Registered VASPs | On-chain `VaspRegistry` |
+| ⛔ Revoked Wallets | On-chain `RevocationList` |
+| 🌳 Merkle Tree Wallets | Oracle `/merkle/root` |
 
-Plus: KYC level distribution bar chart, Merkle tree operations log, oracle uptime, and Travel Rule threshold.
+Plus: KYC level distribution bar chart, Merkle operations log, oracle uptime, and Travel Rule threshold display.
 
 ---
 
-## Cryptographic Design
+## 🔐 Cryptographic Design
 
 ### Ed25519 Attestation Flow
 
-```
-1. Oracle builds 41-byte preimage:
-   [wallet_pubkey (32 bytes)] [expiry_timestamp (8 bytes LE)] [kyc_level (1 byte)]
+```mermaid
+graph TD
+    subgraph ORACLE["🔮 Oracle (Off-chain)"]
+        P1["Build 41-byte preimage<br/><code>wallet(32) ‖ expiry(8 LE) ‖ level(1)</code>"]
+        P2["SHA-256 hash"]
+        P3["Ed25519 sign with oracle key"]
+        P1 --> P2 --> P3
+    end
 
-2. Oracle computes:  hash = SHA-256(preimage)
+    subgraph CLIENT["🏦 Client"]
+        C1["IX 0: Ed25519Program.verify(oracle_pub, hash, sig)"]
+        C2["IX 1: Memo(encrypted_travel_rule) — if ≥ threshold"]
+        C3["IX 2: SCL.transfer_compliant(amount, wallet, expiry, level)"]
+        C1 --> C2 --> C3
+    end
 
-3. Oracle signs:     signature = Ed25519.sign(hash, oracle_secret_key)
+    subgraph ONCHAIN["⛓️ On-chain Verification"]
+        V1["Introspect IX 0 via SYSVAR_INSTRUCTIONS"]
+        V2["Verify oracle_pubkey ∈ registry.oracle_pubkeys"]
+        V3["Reconstruct preimage from IX 2 args → hash → compare to IX 0"]
+        V4["Check expiry > Clock::unix_timestamp"]
+        V5["Check wallet ∉ revocation_list"]
+        V6["Check Memo IX if amount ≥ threshold"]
+        V7["Token-2022 transfer_checked CPI"]
+        V1 --> V2 --> V3 --> V4 --> V5 --> V6 --> V7
+    end
 
-4. Client builds transaction with 3 instructions:
-   IX 0: Ed25519Program.createInstructionWithPublicKey(oracle_pub, hash, signature)
-   IX 1: Memo(encrypted_travel_rule_payload)  ← only if amount ≥ threshold
-   IX 2: SCL.transfer_compliant(amount, decimals, wallet, expiry, level)
+    P3 -->|signature| C1
+    C3 -->|transaction| V1
 
-5. On-chain verification:
-   - Introspect IX 0 via SYSVAR_INSTRUCTIONS to extract pubkey, message, signature
-   - Verify oracle pubkey ∈ registry.oracle_pubkeys
-   - Reconstruct preimage from IX 2 args, hash, compare to IX 0 message
-   - Check expiry > Clock::unix_timestamp
-   - Check wallet ∉ revocation_list.revoked_wallets
-   - If amount ≥ threshold: introspect Memo instruction to verify Travel Rule data
-   - Execute Token-2022 transfer_checked CPI
+    style ORACLE fill:#1c1017,stroke:#e67e22,stroke-width:2px,color:#e1e1e6
+    style CLIENT fill:#0f2027,stroke:#2ecc71,stroke-width:2px,color:#e1e1e6
+    style ONCHAIN fill:#1a1a2e,stroke:#6366f1,stroke-width:2px,color:#e1e1e6
 ```
 
 ### Merkle Proof Verification
 
 ```
-1. Off-chain tree construction:
-   leaf = keccak256(wallet_pubkey_bytes)
-   internal_node = keccak256(min(left, right) || max(left, right))
+Off-chain:
+  leaf = keccak256(wallet_pubkey_bytes)
+  For each level, record the sibling hash
 
-2. Proof generation:
-   For each tree level, include the sibling node hash
-
-3. On-chain verification (transfer_compliant_merkle):
-   computed = keccak256(sender_pubkey_bytes)
-   for each proof_element:
-     if computed ≤ proof_element:
-       computed = keccak256(computed || proof_element)
-     else:
-       computed = keccak256(proof_element || computed)
-   require!(computed == merkle_root_account.root)
+On-chain (transfer_compliant_merkle):
+  computed = keccak256(sender_pubkey_bytes)
+  for proof_element in merkle_proof:
+    if computed ≤ proof_element:
+      computed = keccak256(computed ‖ proof_element)
+    else:
+      computed = keccak256(proof_element ‖ computed)
+  require!(computed == merkle_root_account.root)
 ```
 
-### Travel Rule Encryption
-
-Travel Rule payloads are encrypted using the receiver VASP's X25519 public key:
+### Travel Rule Encryption (X25519 + XSalsa20-Poly1305)
 
 ```
-1. Sender looks up receiver VASP's encryption_key from VaspRegistry
-2. Sender generates ephemeral X25519 keypair
-3. Payload encrypted: XSalsa20-Poly1305(payload, shared_secret)
-4. Encrypted blob = [ephemeral_pub (32) || nonce (24) || ciphertext]
-5. Base64-encoded blob attached as Memo instruction data
-6. Receiver VASP decrypts using their X25519 secret key
+1. Look up receiver VASP's X25519 public key from VaspRegistry
+2. Generate ephemeral X25519 keypair
+3. Derive shared secret: X25519(ephemeral_secret, receiver_pub)
+4. Encrypt: XSalsa20-Poly1305(travel_rule_json, shared_secret, nonce)
+5. Output: [ephemeral_pub (32) ‖ nonce (24) ‖ ciphertext]
+6. Base64-encode → attach as Memo instruction data
 ```
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- **Rust** ≥ 1.75 with `rustup`
-- **Solana CLI** ≥ 1.18
-- **Anchor CLI** 0.30.1
-- **Node.js** ≥ 18
-- **npm** ≥ 9
+| Tool | Version | Install |
+|:-----|:-------:|:--------|
+| Rust | ≥ 1.75 | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| Solana CLI | ≥ 1.18 | `sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"` |
+| Anchor CLI | 0.30.1 | `cargo install --git https://github.com/coral-xyz/anchor avm && avm install 0.30.1` |
+| Node.js | ≥ 18 | [nodejs.org](https://nodejs.org) |
 
 ### Installation
 
 ```bash
-# Clone the repository
+# Clone
 git clone https://github.com/web3-wizard/SCL.git
 cd SCL
 
-# Install all dependencies (root, oracle, app)
+# Install all dependencies
 npm install --legacy-peer-deps
-
-# Install oracle-specific dependencies
 cd oracle && npm install && cd ..
 ```
 
@@ -565,137 +729,125 @@ cd oracle && npm install && cd ..
 # Build the Anchor program
 anchor build
 
-# Start a local validator
+# Start local validator
 solana-test-validator
 
-# Deploy to localnet
+# Deploy
 anchor deploy
 
-# Update the program ID in:
-#   - Anchor.toml
-#   - programs/scl/src/lib.rs (declare_id!)
-#   - app/src/utils/constants.ts (SCL_PROGRAM_ID)
+# ⚠️ Update program ID in:
+#   → Anchor.toml
+#   → programs/scl/src/lib.rs  (declare_id!)
+#   → app/src/utils/constants.ts  (SCL_PROGRAM_ID)
 ```
 
-### Run the Oracle
+### Run Services
 
 ```bash
-# Development mode (hot-reload)
+# Terminal 1: Oracle
 npm run oracle:dev
 
-# Or directly
-cd oracle && npm run dev
-```
-
-The oracle starts on `http://localhost:3001`. Health check:
-
-```bash
-curl http://localhost:3001/health
-```
-
-### Run the Frontend
-
-```bash
-# Development mode
+# Terminal 2: Frontend
 npm run app:dev
 
-# Or directly
-cd app && npm run dev
-```
-
-Opens at `http://localhost:5173`. Connect Phantom wallet (set to devnet or localnet).
-
-### Run Tests
-
-```bash
-# Run all 13 test scenarios
+# Terminal 3: Tests
 anchor test
-```
 
-### Run Demo
-
-```bash
-# Run the 10-scenario end-to-end demo
+# Terminal 3: Demo (alternative)
 npm run demo
 ```
 
-Requires `solana-test-validator` running and the program deployed.
-
 ---
 
-## Configuration
+## ⚙️ Configuration
 
-### Environment Variables (Oracle)
+### Oracle Environment Variables
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+|:---------|:------------|:-------:|
 | `PORT` | Oracle HTTP port | `3001` |
-| `FIREBLOCKS_API_KEY` | Fireblocks API key | — (local signing) |
-| `FIREBLOCKS_API_SECRET_PATH` | Path to Fireblocks RSA private key | — |
-| `FIREBLOCKS_VAULT_ID` | Fireblocks vault account ID | — |
+| `FIREBLOCKS_API_KEY` | Fireblocks API key | — |
+| `FIREBLOCKS_API_SECRET_PATH` | RSA private key path | — |
+| `FIREBLOCKS_VAULT_ID` | Vault account ID | — |
 
-### Constants (Frontend)
+### Frontend Constants
 
-Located in `app/src/utils/constants.ts`:
+> `app/src/utils/constants.ts`
 
 | Constant | Value | Description |
-|----------|-------|-------------|
+|:---------|:------|:------------|
 | `SCL_PROGRAM_ID` | `SC111...` | Deployed program address |
 | `MEMO_PROGRAM_ID` | `MemoSq4gqA...` | Solana Memo Program v2 |
-| `TOKEN_2022_PROGRAM_ID` | `TokenzQdBN...` | SPL Token-2022 Program |
+| `TOKEN_2022_PROGRAM_ID` | `TokenzQdBN...` | SPL Token-2022 |
 | `ORACLE_URL` | `http://localhost:3001` | Oracle base URL |
 | `TRAVEL_RULE_THRESHOLD` | `1_000_000_000` | 1000 rUSDC (6 decimals) |
 
 ---
 
-## Testing
+## 🧪 Testing
 
-### Test Scenarios (13 total)
+### Test Scenarios (13)
 
-| # | Scenario | Expected |
-|---|----------|----------|
-| 1 | Compliant transfer above threshold with Travel Rule | Pass |
-| 2 | Transfer without attestation | Fail |
-| 3 | Transfer above threshold without Travel Rule memo | Fail |
-| 4 | Transfer with expired attestation | Fail |
-| 5 | Transfer below threshold (no memo needed) | Pass |
-| 6 | Transfer with revoked attestation | Fail |
-| 7 | Transfer signed by second oracle | Pass |
-| 8 | Attempt to remove last oracle | Fail |
-| 9 | VASP proposal → approval flow | Pass |
-| 10 | VASP proposal → rejection flow | Pass |
-| 11 | Initialize Merkle root PDA | Pass |
-| 12 | Transfer with valid Merkle proof | Pass |
-| 13 | Transfer with invalid Merkle proof | Fail |
+| # | Scenario | Expected | Category |
+|:-:|:---------|:--------:|:--------:|
+| 1 | Compliant transfer above threshold with Travel Rule | ✅ Pass | Core |
+| 2 | Transfer without attestation | ❌ Fail | Core |
+| 3 | Transfer above threshold without Travel Rule memo | ❌ Fail | Core |
+| 4 | Transfer with expired attestation | ❌ Fail | Core |
+| 5 | Transfer below threshold (no memo needed) | ✅ Pass | Core |
+| 6 | Transfer with revoked attestation | ❌ Fail | Revocation |
+| 7 | Transfer signed by second oracle | ✅ Pass | Multi-Oracle |
+| 8 | Attempt to remove last oracle | ❌ Fail | Multi-Oracle |
+| 9 | VASP proposal → approval flow | ✅ Pass | Governance |
+| 10 | VASP proposal → rejection flow | ✅ Pass | Governance |
+| 11 | Initialize Merkle root PDA | ✅ Pass | Merkle |
+| 12 | Transfer with valid Merkle proof | ✅ Pass | Merkle |
+| 13 | Transfer with invalid Merkle proof | ❌ Fail | Merkle |
 
-### Demo Scenarios (10 total)
+### Demo Scenarios (10)
+
+<details>
+<summary><b>Click to expand</b></summary>
 
 | # | Scenario | Type |
-|---|----------|------|
-| 1 | Compliant transfer (above threshold) | Happy path |
-| 2 | Missing attestation | Error case |
-| 3 | Missing Travel Rule payload | Error case |
-| 4 | Expired attestation | Error case |
-| 5 | Below threshold (no memo needed) | Happy path |
-| 6 | Revoked attestation | Error case |
-| 7 | Second oracle attestation | Happy path |
-| 8 | VASP governance proposal | Happy path |
-| 9 | Merkle proof transfer | Happy path |
-| 10 | Oracle stats check | Integration |
+|:-:|:---------|:----:|
+| 1 | Compliant transfer (above threshold) | ✅ Happy path |
+| 2 | Missing attestation | ❌ Error case |
+| 3 | Missing Travel Rule payload | ❌ Error case |
+| 4 | Expired attestation | ❌ Error case |
+| 5 | Below threshold (no memo needed) | ✅ Happy path |
+| 6 | Revoked attestation | ❌ Error case |
+| 7 | Second oracle attestation | ✅ Happy path |
+| 8 | VASP governance proposal | ✅ Happy path |
+| 9 | Merkle proof transfer | ✅ Happy path |
+| 10 | Oracle stats check | 📊 Integration |
+
+</details>
 
 ---
 
-## Security Considerations
+## 🔒 Security Considerations
 
-- **Demo keypair** — The oracle ships with a hardcoded Ed25519 keypair (`oracle/src/keypair.ts`) for deterministic testing. **Replace with HSM/Fireblocks in production.**
-- **Ed25519 introspection** — The program introspects the prior instruction to verify the Ed25519 precompile was invoked. This is the standard Solana pattern but requires the Ed25519 verify instruction to be at a specific position in the transaction.
-- **Revocation is owner-only** — Only the registry owner can revoke/unrevoke attestations. Consider multi-sig or DAO governance for production.
-- **Merkle tree is in-memory** — The oracle's Merkle tree resets on restart. Production deployments should persist tree state to a database.
-- **Token-2022 only** — The program uses `anchor_spl::token_2022::transfer_checked`. Legacy SPL Token transfers are not supported.
-- **Travel Rule data** — Encrypted Travel Rule payloads are stored in Memo instructions, which are visible on-chain in encrypted form. Only the recipient VASP can decrypt them.
+> [!WARNING]
+> **The oracle ships with a hardcoded Ed25519 keypair for demos. Replace with HSM/Fireblocks in production.**
+
+| Concern | Detail |
+|:--------|:-------|
+| 🔑 **Demo keypair** | `oracle/src/keypair.ts` is deterministic. Use Fireblocks or HSM in production |
+| 🔍 **Ed25519 introspection** | Program introspects prior instructions — Ed25519 verify must be at correct TX position |
+| 👑 **Owner-only revocation** | Only registry owner can revoke. Consider multi-sig/DAO governance for production |
+| 💾 **In-memory Merkle tree** | Oracle tree resets on restart. Persist to database in production |
+| 🪙 **Token-2022 only** | Legacy SPL Token transfers are not supported |
+| 🔐 **Travel Rule data** | Encrypted on-chain in Memo instructions. Only recipient VASP can decrypt |
 
 ---
 
-## License
+<div align="center">
 
-This project is developed under the Solana Compliance Layer specification (SPEC-1-SCL-MVP).
+### Built with ❤️ on Solana
+
+[![Solana](https://img.shields.io/badge/Powered%20by-Solana-9945FF?style=for-the-badge&logo=solana&logoColor=white)](https://solana.com)
+
+**[⬆ Back to Top](#️-scl--solana-compliance-layer)**
+
+</div>
