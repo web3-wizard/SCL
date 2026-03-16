@@ -50,6 +50,22 @@ export function getRegistryPda(): PublicKey {
   return pda;
 }
 
+export function getRevocationListPda(): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("revocation_list")],
+    SCL_PROGRAM_ID
+  );
+  return pda;
+}
+
+export function getMerkleRootPda(): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("compliance_merkle_root")],
+    SCL_PROGRAM_ID
+  );
+  return pda;
+}
+
 export async function buildCompliantTransferTransaction(
   connection: Connection,
   program: any,
@@ -85,6 +101,7 @@ export async function buildCompliantTransferTransaction(
 
   // 3. transfer_compliant instruction via Anchor
   const registryPda = getRegistryPda();
+  const revocationListPda = getRevocationListPda();
 
   const transferIx = await program.methods
     .transferCompliant(
@@ -102,6 +119,65 @@ export async function buildCompliantTransferTransaction(
       mint,
       tokenProgram: TOKEN_2022_PROGRAM_ID,
       instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+      revocationList: revocationListPda,
+    })
+    .instruction();
+
+  instructions.push(transferIx);
+
+  // Build versioned transaction
+  const { blockhash } = await connection.getLatestBlockhash();
+  const messageV0 = new TransactionMessage({
+    payerKey: sender,
+    recentBlockhash: blockhash,
+    instructions,
+  }).compileToV0Message();
+
+  return new VersionedTransaction(messageV0);
+}
+
+export async function buildCompliantMerkleTransferTransaction(
+  connection: Connection,
+  program: any,
+  sender: PublicKey,
+  senderTokenAccount: PublicKey,
+  recipientTokenAccount: PublicKey,
+  mint: PublicKey,
+  amount: bigint,
+  decimals: number,
+  merkleProof: number[][],
+  encryptedTravelRule: string | null
+): Promise<VersionedTransaction> {
+  const instructions: TransactionInstruction[] = [];
+
+  // 1. Memo with Travel Rule payload (if required)
+  if (encryptedTravelRule) {
+    instructions.push(buildMemoInstruction(encryptedTravelRule, sender));
+  }
+
+  // 2. transfer_compliant_merkle instruction via Anchor
+  const registryPda = getRegistryPda();
+  const revocationListPda = getRevocationListPda();
+  const merkleRootPda = getMerkleRootPda();
+
+  const proofBytes = merkleProof.map((p) => Array.from(p));
+
+  const transferIx = await program.methods
+    .transferCompliantMerkle(
+      { toNumber: () => Number(amount) } as any,
+      decimals,
+      proofBytes
+    )
+    .accounts({
+      registry: registryPda,
+      merkleRoot: merkleRootPda,
+      sender: sender,
+      senderTokenAccount,
+      recipientTokenAccount,
+      mint,
+      tokenProgram: TOKEN_2022_PROGRAM_ID,
+      instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+      revocationList: revocationListPda,
     })
     .instruction();
 
