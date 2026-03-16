@@ -25,7 +25,7 @@ pub fn handler(
 ) -> Result<()> {
     let registry = &mut ctx.accounts.registry;
     registry.owner = ctx.accounts.owner.key();
-    registry.oracle_pubkey = oracle_pubkey;
+    registry.oracle_pubkeys = vec![oracle_pubkey];
     registry.travel_rule_threshold = travel_rule_threshold;
     registry.vasp_count = 0;
     registry.vasps = Vec::new();
