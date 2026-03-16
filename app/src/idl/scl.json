@@ -36,7 +36,8 @@
         { "name": "recipientTokenAccount", "isMut": true, "isSigner": false },
         { "name": "mint", "isMut": false, "isSigner": false },
         { "name": "tokenProgram", "isMut": false, "isSigner": false },
-        { "name": "instructionsSysvar", "isMut": false, "isSigner": false }
+        { "name": "instructionsSysvar", "isMut": false, "isSigner": false },
+        { "name": "revocationList", "isMut": false, "isSigner": false }
       ],
       "args": [
         { "name": "amount", "type": "u64" },
@@ -44,6 +45,134 @@
         { "name": "attestationWallet", "type": "publicKey" },
         { "name": "attestationExpiry", "type": "i64" },
         { "name": "attestationLevel", "type": "u8" }
+      ]
+    },
+    {
+      "name": "initializeRevocationList",
+      "accounts": [
+        { "name": "revocationList", "isMut": true, "isSigner": false },
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "revokeAttestation",
+      "accounts": [
+        { "name": "revocationList", "isMut": true, "isSigner": false },
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "owner", "isMut": false, "isSigner": true }
+      ],
+      "args": [
+        { "name": "wallet", "type": "publicKey" }
+      ]
+    },
+    {
+      "name": "unrevokeAttestation",
+      "accounts": [
+        { "name": "revocationList", "isMut": true, "isSigner": false },
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "owner", "isMut": false, "isSigner": true }
+      ],
+      "args": [
+        { "name": "wallet", "type": "publicKey" }
+      ]
+    },
+    {
+      "name": "addOracle",
+      "accounts": [
+        { "name": "registry", "isMut": true, "isSigner": false },
+        { "name": "owner", "isMut": false, "isSigner": true }
+      ],
+      "args": [
+        { "name": "oraclePubkey", "type": "publicKey" }
+      ]
+    },
+    {
+      "name": "removeOracle",
+      "accounts": [
+        { "name": "registry", "isMut": true, "isSigner": false },
+        { "name": "owner", "isMut": false, "isSigner": true }
+      ],
+      "args": [
+        { "name": "oraclePubkey", "type": "publicKey" }
+      ]
+    },
+    {
+      "name": "proposeVasp",
+      "accounts": [
+        { "name": "proposal", "isMut": true, "isSigner": false },
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "proposer", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "vaspPubkey", "type": "publicKey" },
+        { "name": "name", "type": "string" },
+        { "name": "jurisdiction", "type": "string" },
+        { "name": "encryptionKey", "type": { "array": ["u8", 32] } }
+      ]
+    },
+    {
+      "name": "approveVasp",
+      "accounts": [
+        { "name": "proposal", "isMut": true, "isSigner": false },
+        { "name": "registry", "isMut": true, "isSigner": false },
+        { "name": "owner", "isMut": false, "isSigner": true },
+        { "name": "proposer", "isMut": true, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "rejectVasp",
+      "accounts": [
+        { "name": "proposal", "isMut": true, "isSigner": false },
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "owner", "isMut": false, "isSigner": true },
+        { "name": "proposer", "isMut": true, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "initializeMerkleRoot",
+      "accounts": [
+        { "name": "merkleRoot", "isMut": true, "isSigner": false },
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "owner", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    },
+    {
+      "name": "updateMerkleRoot",
+      "accounts": [
+        { "name": "merkleRoot", "isMut": true, "isSigner": false },
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "owner", "isMut": false, "isSigner": true }
+      ],
+      "args": [
+        { "name": "newRoot", "type": { "array": ["u8", 32] } },
+        { "name": "treeSize", "type": "u32" }
+      ]
+    },
+    {
+      "name": "transferCompliantMerkle",
+      "accounts": [
+        { "name": "registry", "isMut": false, "isSigner": false },
+        { "name": "merkleRoot", "isMut": false, "isSigner": false },
+        { "name": "sender", "isMut": true, "isSigner": true },
+        { "name": "senderTokenAccount", "isMut": true, "isSigner": false },
+        { "name": "recipientTokenAccount", "isMut": true, "isSigner": false },
+        { "name": "mint", "isMut": false, "isSigner": false },
+        { "name": "tokenProgram", "isMut": false, "isSigner": false },
+        { "name": "instructionsSysvar", "isMut": false, "isSigner": false },
+        { "name": "revocationList", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "amount", "type": "u64" },
+        { "name": "decimals", "type": "u8" },
+        { "name": "merkleProof", "type": { "vec": { "array": ["u8", 32] } } }
       ]
     }
   ],
@@ -54,10 +183,49 @@
         "kind": "struct",
         "fields": [
           { "name": "owner", "type": "publicKey" },
-          { "name": "oraclePubkey", "type": "publicKey" },
+          { "name": "oraclePubkeys", "type": { "vec": "publicKey" } },
           { "name": "travelRuleThreshold", "type": "u64" },
           { "name": "vaspCount", "type": "u32" },
           { "name": "vasps", "type": { "vec": { "defined": "VaspEntry" } } }
+        ]
+      }
+    },
+    {
+      "name": "RevocationList",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "revocationCount", "type": "u32" },
+          { "name": "revokedWallets", "type": { "vec": "publicKey" } }
+        ]
+      }
+    },
+    {
+      "name": "VaspProposal",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "proposer", "type": "publicKey" },
+          { "name": "vaspPubkey", "type": "publicKey" },
+          { "name": "name", "type": "string" },
+          { "name": "jurisdiction", "type": "string" },
+          { "name": "encryptionKey", "type": { "array": ["u8", 32] } },
+          { "name": "proposedAt", "type": "i64" },
+          { "name": "status", "type": { "defined": "ProposalStatus" } },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    },
+    {
+      "name": "ComplianceMerkleRoot",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "authority", "type": "publicKey" },
+          { "name": "root", "type": { "array": ["u8", 32] } },
+          { "name": "treeSize", "type": "u32" },
+          { "name": "lastUpdated", "type": "i64" }
         ]
       }
     }
@@ -74,6 +242,17 @@
           { "name": "encryptionKey", "type": { "array": ["u8", 32] } }
         ]
       }
+    },
+    {
+      "name": "ProposalStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          { "name": "Pending" },
+          { "name": "Approved" },
+          { "name": "Rejected" }
+        ]
+      }
     }
   ],
   "errors": [
@@ -84,6 +263,74 @@
     { "code": 6004, "name": "Unauthorized", "msg": "Only the registry owner can perform this action" },
     { "code": 6005, "name": "MissingEd25519Instruction", "msg": "Ed25519 signature verification instruction not found" },
     { "code": 6006, "name": "InvalidSignatureVerification", "msg": "Ed25519 signature verification failed" },
-    { "code": 6007, "name": "InvalidAttestationMessage", "msg": "Invalid attestation message format" }
+    { "code": 6007, "name": "InvalidAttestationMessage", "msg": "Invalid attestation message format" },
+    { "code": 6008, "name": "AttestationRevoked", "msg": "Wallet attestation has been revoked" },
+    { "code": 6009, "name": "WalletNotRevoked", "msg": "Wallet is not in the revocation list" },
+    { "code": 6010, "name": "RevocationListFull", "msg": "Revocation list has reached maximum capacity" },
+    { "code": 6011, "name": "WalletAlreadyRevoked", "msg": "Wallet is already in the revocation list" },
+    { "code": 6012, "name": "OracleAlreadyExists", "msg": "Oracle is already registered in the registry" },
+    { "code": 6013, "name": "OracleNotFound", "msg": "Oracle not found in the registry" },
+    { "code": 6014, "name": "OracleListFull", "msg": "Maximum number of oracles reached" },
+    { "code": 6015, "name": "CannotRemoveLastOracle", "msg": "Cannot remove the last oracle from the registry" },
+    { "code": 6016, "name": "InvalidProposalStatus", "msg": "Proposal is not in pending status" },
+    { "code": 6017, "name": "RegistryFull", "msg": "VASP registry has reached maximum capacity" },
+    { "code": 6018, "name": "InvalidMerkleProof", "msg": "Invalid Merkle proof - wallet is not in the compliant set" }
+  ],
+  "events": [
+    {
+      "name": "CompliantTransferEvent",
+      "fields": [
+        { "name": "sender", "type": "publicKey", "index": false },
+        { "name": "recipient", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false },
+        { "name": "attestationLevel", "type": "u8", "index": false },
+        { "name": "travelRuleIncluded", "type": "bool", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "MerkleTransferEvent",
+      "fields": [
+        { "name": "sender", "type": "publicKey", "index": false },
+        { "name": "recipient", "type": "publicKey", "index": false },
+        { "name": "amount", "type": "u64", "index": false },
+        { "name": "proofSize", "type": "u8", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "AttestationRevokedEvent",
+      "fields": [
+        { "name": "wallet", "type": "publicKey", "index": false },
+        { "name": "authority", "type": "publicKey", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "AttestationUnrevokedEvent",
+      "fields": [
+        { "name": "wallet", "type": "publicKey", "index": false },
+        { "name": "authority", "type": "publicKey", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "VaspRegisteredEvent",
+      "fields": [
+        { "name": "vaspPubkey", "type": "publicKey", "index": false },
+        { "name": "name", "type": "string", "index": false },
+        { "name": "jurisdiction", "type": "string", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    },
+    {
+      "name": "VaspProposedEvent",
+      "fields": [
+        { "name": "vaspPubkey", "type": "publicKey", "index": false },
+        { "name": "proposer", "type": "publicKey", "index": false },
+        { "name": "name", "type": "string", "index": false },
+        { "name": "timestamp", "type": "i64", "index": false }
+      ]
+    }
   ]
 }
