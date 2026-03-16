@@ -1,8 +1,8 @@
 import { PublicKey } from "@solana/web3.js";
 
-// Updated after `anchor build` — placeholder for now
+// Placeholder - replace with actual program ID after `anchor deploy`
 export const SCL_PROGRAM_ID = new PublicKey(
-  "SC1111111111111111111111111111111111111111111"
+  "11111111111111111111111111111111"
 );
 
 export const MEMO_PROGRAM_ID = new PublicKey(
