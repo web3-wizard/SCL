@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTravelRule } from "../hooks/useTravelRule";
-import { decode as decodeBase64 } from "tweetnacl-util";
+import tweetnaclUtil from "tweetnacl-util";
+const decodeBase64 = tweetnaclUtil.decodeBase64;
 
 export function ReceiverDashboard() {
   const { decryptedPayload, error, decrypt } = useTravelRule();

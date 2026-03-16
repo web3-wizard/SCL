@@ -9,10 +9,11 @@ import { clusterApiUrl } from "@solana/web3.js";
 import { WalletConnect } from "./components/WalletConnect";
 import { TransferForm } from "./components/TransferForm";
 import { ReceiverDashboard } from "./components/ReceiverDashboard";
+import { AnalyticsDashboard } from "./components/AnalyticsDashboard";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-type Tab = "send" | "receive";
+type Tab = "send" | "receive" | "analytics";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("send");
@@ -73,11 +74,15 @@ export default function App() {
               <button style={tabStyle("receive")} onClick={() => setActiveTab("receive")}>
                 Receive
               </button>
+              <button style={tabStyle("analytics")} onClick={() => setActiveTab("analytics")}>
+                Analytics
+              </button>
             </nav>
 
             <main style={{ padding: "24px 0" }}>
               {activeTab === "send" && <TransferForm />}
               {activeTab === "receive" && <ReceiverDashboard />}
+              {activeTab === "analytics" && <AnalyticsDashboard />}
             </main>
           </div>
         </WalletModalProvider>
