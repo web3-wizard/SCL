@@ -10,8 +10,9 @@ use anchor_lang::solana_program::{
 };
 use anchor_spl::token_2022::{self, Token2022, TransferChecked};
 use anchor_spl::token_interface::{Mint, TokenAccount};
-use crate::state::VaspRegistry;
+use crate::state::{VaspRegistry, RevocationList};
 use crate::errors::SclError;
+use crate::events::CompliantTransferEvent;
 use crate::utils::MEMO_PROGRAM_ID;
 
 #[derive(Accounts)]
@@ -47,6 +48,9 @@ pub struct TransferCompliant<'info> {
     /// CHECK: Instructions sysvar used for Ed25519 and Memo introspection
     #[account(address = instructions::ID)]
     pub instructions_sysvar: AccountInfo<'info>,
+
+    #[account(seeds = [b"revocation_list"], bump)]
+    pub revocation_list: Account<'info, RevocationList>,
 }
 
 pub fn handler(
@@ -63,11 +67,17 @@ pub fn handler(
     // Step 1: Verify Ed25519 signature instruction exists in this transaction
     verify_ed25519_instruction(
         &ctx.accounts.instructions_sysvar,
-        &registry.oracle_pubkey,
+        &registry.oracle_pubkeys,
         &attestation_wallet,
         attestation_expiry,
         attestation_level,
     )?;
+
+    // Step 1.5: Check revocation list
+    require!(
+        !ctx.accounts.revocation_list.is_revoked(&attestation_wallet),
+        SclError::AttestationRevoked
+    );
 
     // Step 2: Validate attestation fields
     require!(
@@ -95,6 +105,16 @@ pub fn handler(
     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
     token_2022::transfer_checked(cpi_ctx, amount, decimals)?;
 
+    // Emit event
+    emit!(CompliantTransferEvent {
+        sender: ctx.accounts.sender.key(),
+        recipient: ctx.accounts.recipient_token_account.key(),
+        amount,
+        attestation_level,
+        travel_rule_included: amount >= registry.travel_rule_threshold,
+        timestamp: clock.unix_timestamp,
+    });
+
     Ok(())
 }
 
@@ -102,7 +122,7 @@ pub fn handler(
 /// that verifies the oracle's signature over SHA256(wallet || expiry || level).
 fn verify_ed25519_instruction(
     instructions_sysvar: &AccountInfo,
-    oracle_pubkey: &Pubkey,
+    oracle_pubkeys: &[Pubkey],
     wallet: &Pubkey,
     expiry: i64,
     level: u8,
@@ -158,12 +178,12 @@ fn verify_ed25519_instruction(
                 ix.data[offset_base + 10..offset_base + 12].try_into().unwrap()
             ) as usize;
 
-            // Extract and verify the public key matches the oracle
+            // Extract and verify the public key matches any registered oracle
             if ix.data.len() < pubkey_offset + 32 {
                 continue;
             }
             let ix_pubkey = &ix.data[pubkey_offset..pubkey_offset + 32];
-            if ix_pubkey != oracle_pubkey.to_bytes() {
+            if !oracle_pubkeys.iter().any(|oracle| ix_pubkey == oracle.to_bytes()) {
                 continue;
             }
 

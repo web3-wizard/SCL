@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::state::{VaspRegistry, VaspEntry};
 use crate::errors::SclError;
+use crate::events::VaspRegisteredEvent;
 
 #[derive(Accounts)]
 pub struct RegisterVasp<'info> {
@@ -30,11 +31,19 @@ pub fn handler(
 
     registry.vasps.push(VaspEntry {
         vasp_pubkey,
-        name,
-        jurisdiction,
+        name: name.clone(),
+        jurisdiction: jurisdiction.clone(),
         encryption_key,
     });
     registry.vasp_count += 1;
+
+    let clock = Clock::get()?;
+    emit!(VaspRegisteredEvent {
+        vasp_pubkey,
+        name,
+        jurisdiction,
+        timestamp: clock.unix_timestamp,
+    });
 
     Ok(())
 }
