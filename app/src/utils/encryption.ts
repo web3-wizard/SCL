@@ -1,5 +1,8 @@
 import nacl from "tweetnacl";
-import { encode as encodeBase64, decode as decodeBase64 } from "tweetnacl-util";
+import tweetnaclUtil from "tweetnacl-util";
+
+const encodeBase64 = tweetnaclUtil.encodeBase64;
+const decodeBase64 = tweetnaclUtil.decodeBase64;
 
 export interface TravelRulePayload {
   originatorName: string;
