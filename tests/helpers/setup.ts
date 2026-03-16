@@ -18,6 +18,10 @@ export interface TestFixtures {
   receiverAta: PublicKey;
   registryPda: PublicKey;
   registryBump: number;
+  revocationListPda: PublicKey;
+  revocationListBump: number;
+  merkleRootPda: PublicKey;
+  merkleRootBump: number;
 }
 
 export async function setupTestFixtures(
@@ -100,6 +104,18 @@ export async function setupTestFixtures(
     program.programId
   );
 
+  // Find revocation list PDA
+  const [revocationListPda, revocationListBump] = PublicKey.findProgramAddressSync(
+    [Buffer.from("revocation_list")],
+    program.programId
+  );
+
+  // Find merkle root PDA
+  const [merkleRootPda, merkleRootBump] = PublicKey.findProgramAddressSync(
+    [Buffer.from("compliance_merkle_root")],
+    program.programId
+  );
+
   return {
     provider,
     oracleKeypair,
@@ -110,5 +126,9 @@ export async function setupTestFixtures(
     receiverAta: receiverAtaAccount.address,
     registryPda,
     registryBump,
+    revocationListPda,
+    revocationListBump,
+    merkleRootPda,
+    merkleRootBump,
   };
 }
