@@ -1,0 +1,110 @@
+name: Deploy SCL to Devnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_program:
+        description: 'Deploy Anchor program'
+        required: true
+        default: 'true'
+        type: boolean
+      initialize_registry:
+        description: 'Initialize registry after deploy'
+        required: true
+        default: 'true'
+        type: boolean
+
+env:
+  SOLANA_VERSION: '1.18.4'
+  ANCHOR_VERSION: '0.30.1'
+  NODE_VERSION: '18'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.solana.com/v${{ env.SOLANA_VERSION }}/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+
+      - name: Install Anchor CLI
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install ${{ env.ANCHOR_VERSION }}
+          avm use ${{ env.ANCHOR_VERSION }}
+
+      - name: Configure Solana
+        run: |
+          solana config set --url devnet
+          echo "${{ secrets.DEPLOYER_KEYPAIR }}" > ~/.config/solana/id.json
+          solana address
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Anchor program
+        run: anchor build
+
+      - name: Deploy program
+        if: ${{ inputs.deploy_program }}
+        run: |
+          anchor deploy --provider.cluster devnet
+          PROGRAM_ID=$(solana address -k target/deploy/scl-keypair.json)
+          echo "PROGRAM_ID=$PROGRAM_ID" >> $GITHUB_ENV
+          echo "Program deployed: $PROGRAM_ID"
+
+      - name: Update constants
+        if: ${{ inputs.deploy_program }}
+        run: |
+          sed -i "s/11111111111111111111111111111111/${{ env.PROGRAM_ID }}/" app/src/utils/constants.ts
+          cat app/src/utils/constants.ts
+
+      - name: Initialize registry
+        if: ${{ inputs.initialize_registry }}
+        run: |
+          cd oracle && npm install && cd ..
+          npx ts-node scripts/initialize.ts
+        env:
+          ANCHOR_PROVIDER_URL: https://api.devnet.solana.com
+          ANCHOR_WALLET: ~/.config/solana/id.json
+
+      - name: Upload program keypair
+        uses: actions/upload-artifact@v4
+        with:
+          name: program-keypair
+          path: target/deploy/scl-keypair.json
+
+      - name: Summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Program ID**: ${{ env.PROGRAM_ID }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Network**: Devnet" >> $GITHUB_STEP_SUMMARY
+          echo "- **Explorer**: https://explorer.solana.com/address/${{ env.PROGRAM_ID }}?cluster=devnet" >> $GITHUB_STEP_SUMMARY
