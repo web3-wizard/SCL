@@ -41,5 +41,5 @@ export function useTravelRule() {
     []
   );
 
-  return { encryptedPayload, decryptedPayload, error, encrypt, decrypt };
+  return { encryptedPayload, decryptedPayload, error, encrypt, decrypt, setDecryptedPayload, setError };
 }
