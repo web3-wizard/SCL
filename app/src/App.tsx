@@ -4,12 +4,12 @@ import {
   WalletProvider,
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
-import { clusterApiUrl } from "@solana/web3.js";
+import { clusterApiUrl, Cluster } from "@solana/web3.js";
 import { WalletConnect } from "./components/WalletConnect";
 import { TransferForm } from "./components/TransferForm";
 import { ReceiverDashboard } from "./components/ReceiverDashboard";
 import { AnalyticsDashboard } from "./components/AnalyticsDashboard";
+import { SOLANA_CLUSTER } from "./utils/constants";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
@@ -18,8 +18,9 @@ type Tab = "send" | "receive" | "analytics";
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>("send");
 
-  const endpoint = useMemo(() => clusterApiUrl("devnet"), []);
-  const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
+  const endpoint = useMemo(() => clusterApiUrl(SOLANA_CLUSTER as Cluster), []);
+  // Empty array = auto-detect wallets via Wallet Standard (Phantom, Solflare, etc.)
+  const wallets = useMemo(() => [], []);
 
   const tabStyle = (tab: Tab) => ({
     padding: "10px 24px",
